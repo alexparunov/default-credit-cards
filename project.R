@@ -1,5 +1,7 @@
 # database link: https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients
 
+####LOAD ENVIROMENT#####
+load("Default_dataset_preprocessed.Rdata")
 #####LIBRARIES######
 if(!require(rstudioapi)) install.packages("rstudioapi")
 if(!require(ggplot2)) install.packages("ggplot2")
@@ -273,6 +275,15 @@ barplotHC = barplot(hc$height)
 
 #emclustering 
 library(mclust)
-Mclust(Default_Dataset, G = NULL, modelNames = NULL, prior = NULL, control = emControl(), initialization = NULL, warn = FALSE)
+DefaultMclust = Mclust(Default_Dataset, G = NULL, modelNames = NULL, prior = NULL, control = emControl(), initialization = NULL, warn = FALSE)
+save.image(file='Default_dataset_preprocessed.Rdata') #Let's save all the objects
+summary(DefaultMclust)
+plotBic = plot(DefaultMclust, what = "BIC")
+plotClassification = plot(DefaultMclust, what = "classification")
+plotDensity = plot(DefaultMclust, what = "Density")
 
-
+#Kmeans
+defaultKmeans <- kmeans(Default_Dataset[,-c(2,3,4,5,6,7,8,9,10,11,24)], 5)
+library(cluster) 
+clusplot(Default_Dataset, defaultKmeans$cluster, color=TRUE, shade=TRUE, 
+         labels=2, lines=0)
