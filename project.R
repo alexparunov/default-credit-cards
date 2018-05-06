@@ -11,7 +11,6 @@ if(!require(mclust)) install.packages("mclust") #Nice clustering library, guide:
 set.seed(1)
 # Setting working directory as path of current file
 setwd(dirname(getActiveDocumentContext()$path))
-
 Default_Dataset <- read.table("default.csv", header=TRUE, na.strings="?", sep=";") #Importing the data set
 Default_Dataset$ID <- NULL #Prescindible
 
@@ -80,10 +79,20 @@ levels(Default_Dataset$default.payment.next.month) <- c("no","yes")
 
 # PAY_0,2,3,4,5,6 are categorical variables described above. So we should set them as factors and give proper names
 
-for(i in 6:11) {
+for(i in 6:9) {
   Default_Dataset[,i] <- as.factor(Default_Dataset[,i])
   levs <- c("pay duly", "pay duly", "pay duly") # those are -2, -1, 0
   for(j in 1:8) {
+    st <- paste("delay",j,"months")
+    levs <- c(levs,st)
+  }
+  levels(Default_Dataset[,i]) <- levs
+}
+#For PAY_5 AND PAY_6, theres no month1, 2 and beyond.
+for(i in 10:11) {
+  Default_Dataset[,i] <- as.factor(Default_Dataset[,i])
+  levs <- c("pay duly", "pay duly", "pay duly") # those are -2, -1, 0
+  for(j in 2:8) {
     st <- paste("delay",j,"months")
     levs <- c(levs,st)
   }
@@ -275,15 +284,17 @@ barplotHC = barplot(hc$height)
 
 #emclustering 
 library(mclust)
-DefaultMclust = Mclust(Default_Dataset, G = NULL, modelNames = NULL, prior = NULL, control = emControl(), initialization = NULL, warn = FALSE)
+xDefault_Dataset = Default_Dataset[1:300,]
+DefaultMclust = Mclust(xDefault_Dataset, G = NULL, modelNames = NULL, prior = NULL, control = emControl(), initialization = NULL, warn = FALSE)
 save.image(file='Default_dataset_preprocessed.Rdata') #Let's save all the objects
 summary(DefaultMclust)
 plotBic = plot(DefaultMclust, what = "BIC")
-plotClassification = plot(DefaultMclust, what = "classification")
-plotDensity = plot(DefaultMclust, what = "Density")
+plotClassification <- plot(DefaultMclust, what = "classification")
+plotDensity <- plot(DefaultMclust, what = "Density")
 
 #Kmeans
-defaultKmeans <- kmeans(Default_Dataset[,-c(2,3,4,5,6,7,8,9,10,11,24)], 5)
+defaultKmeans <- kmeans(xDefault_Dataset[,-c(2,3,4,5,6,7,8,9,10,11,24)], 5)
 library(cluster) 
-clusplot(Default_Dataset, defaultKmeans$cluster, color=TRUE, shade=TRUE, 
-         labels=2, lines=0)
+clusplot(xDefault_Dataset, defaultKmeans$cluster, color=TRUE, shade=TRUE, 
+         labels=3, lines=2)
+#Here we can see the different clusters. cluster 5 for example are the individuals with perfect behaiviour, always pay and no delays.
