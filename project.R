@@ -76,29 +76,6 @@ levels(Default_Dataset$EDUCATION) <- c("graduate school", "university", "high sc
 Default_Dataset$default.payment.next.month <- as.factor(Default_Dataset$default.payment.next.month)
 levels(Default_Dataset$default.payment.next.month) <- c("no","yes")
 
-
-# PAY_0,2,3,4,5,6 are categorical variables described above. So we should set them as factors and give proper names
-
-for(i in 6:9) {
-  Default_Dataset[,i] <- as.factor(Default_Dataset[,i])
-  levs <- c("pay duly", "pay duly", "pay duly") # those are -2, -1, 0
-  for(j in 1:8) {
-    st <- paste("delay",j,"months")
-    levs <- c(levs,st)
-  }
-  levels(Default_Dataset[,i]) <- levs
-}
-#For PAY_5 AND PAY_6, theres no month1, 2 and beyond.
-for(i in 10:11) {
-  Default_Dataset[,i] <- as.factor(Default_Dataset[,i])
-  levs <- c("pay duly", "pay duly", "pay duly") # those are -2, -1, 0
-  for(j in 2:8) {
-    st <- paste("delay",j,"months")
-    levs <- c(levs,st)
-  }
-  levels(Default_Dataset[,i]) <- levs
-}
-
 # Saved pre-processed data set for future preprocessing
 save(Default_Dataset, file = "Default_dataset_preprocessed.Rdata")
 
@@ -159,7 +136,7 @@ bestinsecondPCvar
 dim <- sum(as.numeric(PCADefault$eig[,3] <= 80)) #5 significant dimensions
 
 #NIPALS ALGORITHM TO OBTAIN THE 5 PRINCIPAL COMPONENTS
-nipals <- function(X, rankX = 5, suppl.col =  c(2,3,4,5,6,7,8,9,10,11,24), eps = 1e-06) {
+nipals <- function(X, rankX = 5, suppl.col =  c(2,3,4,5,24), eps = 1e-06) {
   X <- as.matrix(X[,-suppl.col])
   
   # Center Matrix X
