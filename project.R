@@ -1,16 +1,19 @@
 # database link: https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients
 
-####LOAD ENVIROMENT#####
-load("Default_dataset_preprocessed.Rdata")
+
 #####LIBRARIES######
 if(!require(rstudioapi)) install.packages("rstudioapi")
 if(!require(ggplot2)) install.packages("ggplot2")
 if(!require(plotly)) install.packages("plotly")
 if(!require(mice)) install.packages("mice")
 if(!require(mclust)) install.packages("mclust") #Nice clustering library, guide: http://rstudio-pubs-static.s3.amazonaws.com/154174_78c021bc71ab42f8add0b2966938a3b8.html
+if(!require(plyr)) install.packages("plyr") #"Library for the creation of the new variables."
 set.seed(1)
 # Setting working directory as path of current file
 setwd(dirname(getActiveDocumentContext()$path))
+####LOAD ENVIROMENT#####
+load("Default_dataset_preprocessed1.Rdata")
+#######BEGIN PREPROCESED#######
 Default_Dataset <- read.table("default.csv", header=TRUE, na.strings="?", sep=";") #Importing the data set
 Default_Dataset$ID <- NULL #Prescindible
 
@@ -75,12 +78,52 @@ levels(Default_Dataset$EDUCATION) <- c("graduate school", "university", "high sc
 # Set default.payment.next.month as factor and change levels for more clarity
 Default_Dataset$default.payment.next.month <- as.factor(Default_Dataset$default.payment.next.month)
 levels(Default_Dataset$default.payment.next.month) <- c("no","yes")
+#NEW VARIABLES
+#We create 6 new variables that tell if an individual have good account status, paid duly, paid the minimum or have some delay in the payments.
+#Those variables can have 4 values. After a very long investigation, even posting on the data set forum, we have made some assumption after inspecting the data.
+#-2 : Good Account Status
+#-1 : Pay-duly
+# 0 : Pay minimum
+# else: Delay
+#Those new variables will be a factor.
+Default_Dataset$PAYSTATUS_0 <- NA
+Default_Dataset$PAYSTATUS_2 <- NA
+Default_Dataset$PAYSTATUS_3 <- NA
+Default_Dataset$PAYSTATUS_4 <- NA
+Default_Dataset$PAYSTATUS_5 <- NA
+Default_Dataset$PAYSTATUS_6 <- NA
 
+getPaymentStatus <- function(row) {
+  for (n in c(0,2,3,4,5,6)) {
+    varPay <- paste("PAY_", n, sep = '')
+    varStatus <- paste("PAYSTATUS_", n, sep = '')
+    if(row[varPay]==-2){
+      row[varStatus] = "Good account status" 
+      row[varPay]=0
+    }
+    else if(row[varPay]==-1){
+      row[varStatus] = "Pay-duly" 
+      row[varPay]=0
+    }
+    else if(row[varPay]==0){
+      row[varStatus] = "Pay minimum" 
+    }
+    else {
+      row[varStatus] = "Delay" 
+    }
+  }
+  return(row)
+}
+Default_Dataset <- adply(Default_Dataset, 1, getPaymentStatus)
+for(i in c(0,2,3,4,5,6))
+{
+  varStatus <- paste("PAYSTATUS_", i, sep = '')
+  Default_Dataset[,varStatus] = as.factor(Default_Dataset[,varStatus])
+}
 # Saved pre-processed data set for future preprocessing
-save(Default_Dataset, file = "Default_dataset_preprocessed.Rdata")
+save(Default_Dataset, file = "Default_dataset_preprocessed1.Rdata")
 
 # We can load data set directly and skip above given steps
-load("Default_dataset_preprocessed.Rdata")
 summary(Default_Dataset)
 
 #####SOME PLOTS AND OTHER THINGS IN ORDER TO HAVE A CLEAR IDEA OF THE DATA#######
@@ -97,20 +140,70 @@ ggplot(Default_Dataset, aes(default.payment.next.month, MARRIAGE)) +
 #Same that before but with sex
 ggplot(Default_Dataset, aes(default.payment.next.month, SEX)) +
   geom_jitter(aes(color = SEX), size = 0.5)
-
+#Same with the payStatus0
+ggplot(Default_Dataset, aes(default.payment.next.month, PAYSTATUS_4)) +
+  geom_jitter(aes(color = SEX), size = 0.5)
 
 ########PCA#########
 if(!require(FactoMineR)) install.packages("FactoMineR")
 
-PCADefault <- PCA(Default_Dataset,quali.sup = c(2,3,4,5,6,7,8,9,10,11,24))
+PCADefault <- PCA(Default_Dataset,quali.sup = c(2,3,4,5,24,25,26,27,28,29,30))
 PCADefault
+#We can see that the PCA shows that all the variables PAY_X are correlated in an inmense way, so, we could unify this variables into one unic variable.
+#We will unify the variables in this way:
+#The variables PAYSTATUS_X, as those variables are related with PAY_X will be transformed to
+#The variables will be transformed into:
+#PAY_X --> Delay. This variable will contain the MEAN delay of this individual in the payments.
+#PAY_STATUSX--> AccountStatus. This variable will contain the MOST COMMON status in the account for this individual.
+#As the data have to be refactored, we will inspec the PCA once the data is refactored.
+######DATA REFACTOR######
+Default_Dataset$Delay = ""
+Default_Dataset$AccountStatus = ""
+refactorDataset <- function(row) {
+  valuePay = 0
+  valueStatus = 0
+  for (n in c(0,2,3,4,5,6)) {
+    varPay <- paste("PAY_", n, sep = '')
+    varStatus <- paste("PAYSTATUS_", n, sep = '')
+    #We assign more value to a good condition and less to a bad condition. In the end we will do a floor of the mean to pick the worst escenario.
+    if(as.numeric(row[varStatus])==1){
+      valueStatus = valueStatus +1
+    }
+    else if(as.numeric(row[varStatus])==2){
+      valueStatus = valueStatus +4
+      
+    }
+    else if(as.numeric(row[varStatus])==3){
+      valueStatus = valueStatus +2
+    }
+    else {
+      valueStatus = valueStatus +3
+    }
+    valuePay = as.numeric(row[varPay]) + valuePay
+  }
+  row["Delay"] = ceiling(valuePay/6)
+  row["AccountStatus"] = floor(valueStatus/6) #We assign an status that is mean of their status. Using the floor function.
+  return(row)
+}
+Default_Datasetv2 <- adply(Default_Dataset, 1, refactorDataset)#Apply as before
+#Delete old columns
+Default_Datasetv2 = Default_Datasetv2[,-c(6,7,8,9,10,11,25,26,27,28,29,30)]
+#Make factor account status
+Default_Datasetv2$AccountStatus = as.factor(Default_Datasetv2$AccountStatus) 
+levels(Default_Datasetv2$AccountStatus) <- c("Delay","Paid minimum","Paid Duly","Good Status")
+#######PCA SECOND VERSION ##########
+PCADefault2 <- PCA(Default_Datasetv2,quali.sup = c(2,3,4,5,18,20))
+PCADefault2
+#That PCA make a lot of sense, the payments are inversely correlated with the Delay, it makes sense, because if you have more delay, mean that you pay less
+#Also inversely correlate with the limit of credit.
+#The variables BILL_ATMX and PAY_ATMX are very correlated with themselves, Also make sense.
 #Best and worst represented.
-cos1 = PCADefault$ind$cos2 #Return the cos of the individuals
-which.max(cos1[,1]) #The best represented individual is the number 19494
-which.min(cos1[,1]) #The worst represented individual is the number 28995
+cos1 = PCADefault2$ind$cos2 #Return the cos of the individuals
+which.max(cos1[,1]) 
+which.min(cos1[,1]) 
 
 #Contributions
-contribution <- PCADefault$ind$contrib
+contribution <- PCADefault2$ind$contrib
 
 bestinfirstPC <- sort(contribution[,1],decreasing = TRUE)[1:3] #Returns the individuals that are more influencial(Contribution) in the first principal component
 bestinfirstPC
@@ -119,12 +212,12 @@ bestinsecondPC <- sort(contribution[,2],decreasing = TRUE)[1:3] #Returns the ind
 bestinsecondPC
 
 #Best represented variables
-cos2 = PCADefault$var$cos2 #Returns the cos of the variables.
+cos2 = PCADefault2$var$cos2 #Returns the cos of the variables.
 which.max(cos2[,1]) #BILL_AMT4 is the best represented variable in the first factorial plame
-which.min(cos2[,1]) #PAY_AMT6 is the worst represented variable in the first factorial plame
+which.min(cos2[,1]) #PAY_2 is the worst represented variable in the first factorial plame
 
 #Most influencial variables
-contribution2 <- PCADefault$var$contrib
+contribution2 <- PCADefault2$var$contrib
 
 bestinfirstPCvar <- sort(contribution2[,1],decreasing = TRUE)[1:3] #Returns the variables that are more influencial(Contribution) in the first principal component
 bestinfirstPCvar
@@ -133,10 +226,10 @@ bestinsecondPCvar <- sort(contribution2[,2],decreasing = TRUE)[1:3] #Returns the
 bestinsecondPCvar
 
 #Significant dimensions
-dim <- sum(as.numeric(PCADefault$eig[,3] <= 80)) #5 significant dimensions
+dim <- sum(as.numeric(PCADefault2$eig[,3] <= 80)) #7 significant dimensions
 
-#NIPALS ALGORITHM TO OBTAIN THE 5 PRINCIPAL COMPONENTS
-nipals <- function(X, rankX = 5, suppl.col =  c(2,3,4,5,24), eps = 1e-06) {
+#NIPALS ALGORITHM TO OBTAIN THE 7 PRINCIPAL COMPONENTS
+nipals <- function(X, rankX = 7, suppl.col =  c(2,3,4,5,24,25,26,27,28,29,30), eps = 1e-06) {
   X <- as.matrix(X[,-suppl.col])
   
   # Center Matrix X
@@ -235,7 +328,7 @@ theta <- seq(0,2*pi, length.out = 100)
 circle = data.frame(x = cos(theta), y = sin(theta))
 p <- ggplot(circle, aes(x,y)) + geom_path()
 
-df <- data.frame(Dim1 = var_prj[,1], Dim2 = var_prj[,2], variable = colnames(Default_Dataset[,- c(2,3,4,5,6,7,8,9,10,11,24)]))
+df <- data.frame(Dim1 = var_prj[,1], Dim2 = var_prj[,2], variable = colnames(Default_Dataset[,- c(2,3,4,5,24,25,26,27,28,29,30)]))
 
 # Circle with labels
 circle_plot <- p + geom_text(data=df, mapping = aes(x=Dim1, y=Dim2, label=variable, colour = variable)) + coord_fixed(ratio = 1) + labs(x = "Dim1", y = "Dim2")
@@ -259,19 +352,19 @@ hc <- hclust(d, method = "ward.D2")
 plotHC = plot(hc) 
 barplotHC = barplot(hc$height)
 
-#emclustering 
-library(mclust)
-xDefault_Dataset = Default_Dataset[1:300,]
-DefaultMclust = Mclust(xDefault_Dataset, G = NULL, modelNames = NULL, prior = NULL, control = emControl(), initialization = NULL, warn = FALSE)
-save.image(file='Default_dataset_preprocessed.Rdata') #Let's save all the objects
-summary(DefaultMclust)
-plotBic = plot(DefaultMclust, what = "BIC")
-plotClassification <- plot(DefaultMclust, what = "classification")
-plotDensity <- plot(DefaultMclust, what = "Density")
-
 #Kmeans
-defaultKmeans <- kmeans(xDefault_Dataset[,-c(2,3,4,5,6,7,8,9,10,11,24)], 5)
+# Select significant dimensions whose cumulative percentage of variance <= 80%
+dim <- sum(as.numeric(PCADefault$eig[,3] <= 80))
+Psi <- PCADefault$ind$coord[,1:dim]
+Psi <- matrix(0, nrow = nrow(DefaultNoSupple), ncol = rankX)
+centers = 20
+defaultKmeans1 <- kmeans(Default_Dataset[,-c(2,3,4,5,24,25,26,27,28,29,30)], centers =centers, iter.max = 50)
+defaultKmeans2 <- kmeans(Default_Dataset[,-c(2,3,4,5,24,25,26,27,28,29,30)], centers =centers, iter.max = 50)
+table(defaultKmeans1$cluster,defaultKmeans2$cluster)
+clas <- (defaultKmeans2$cluster-1)*centers+defaultKmeans1$cluster
+freq <- table(clas)
+cdclas <- aggregate(as.data.frame(Default_Dataset),list(clas),mean)[,2:(4+1)]
 library(cluster) 
-clusplot(xDefault_Dataset, defaultKmeans$cluster, color=TRUE, shade=TRUE, 
+clusplot(Default_Dataset, defaultKmeans$cluster, color=TRUE, shade=TRUE, 
          labels=3, lines=2)
 #Here we can see the different clusters. cluster 5 for example are the individuals with perfect behaiviour, always pay and no delays.
