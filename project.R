@@ -8,11 +8,18 @@ if(!require(plotly)) install.packages("plotly")
 if(!require(mice)) install.packages("mice")
 if(!require(mclust)) install.packages("mclust") #Nice clustering library, guide: http://rstudio-pubs-static.s3.amazonaws.com/154174_78c021bc71ab42f8add0b2966938a3b8.html
 if(!require(plyr)) install.packages("plyr") #"Library for the creation of the new variables."
+if(!require(ggthemes))install.packages("ggthemes") # visualization
+if(!require(scales))install.packages("scales") # visualization
+if(!require(corrplot))install.packages("corrplot") # plots
+if(!require(FactoMineR)) install.packages("fpc")
+if(!require(fpc)) install.packages("FactoMineR")
+if(!require(cluster)) install.packages("cluster")
+
 set.seed(1)
 # Setting working directory as path of current file
 setwd(dirname(getActiveDocumentContext()$path))
 ####LOAD ENVIROMENT#####
-load("Default_dataset_preprocessed1.Rdata")
+load("Default_dataset_preprocessed.Rdata")
 #######BEGIN PREPROCESED#######
 Default_Dataset <- read.table("default.csv", header=TRUE, na.strings="?", sep=";") #Importing the data set
 Default_Dataset$ID <- NULL #Prescindible
@@ -120,33 +127,9 @@ for(i in c(0,2,3,4,5,6))
   varStatus <- paste("PAYSTATUS_", i, sep = '')
   Default_Dataset[,varStatus] = as.factor(Default_Dataset[,varStatus])
 }
-# Saved pre-processed data set for future preprocessing
-save(Default_Dataset, file = "Default_dataset_preprocessed1.Rdata")
-
 # We can load data set directly and skip above given steps
 summary(Default_Dataset)
-
-#####SOME PLOTS AND OTHER THINGS IN ORDER TO HAVE A CLEAR IDEA OF THE DATA#######
-
-#The second column are the individuals that will default. As we can see, most of them are from low education, but, there still some outliers.
-ggplot(Default_Dataset, aes(default.payment.next.month, EDUCATION)) +
-  geom_jitter(aes(color = EDUCATION), size = 0.5)
-
-#In this plot we can see that the marital status really do not make a difference and dont tell anything in particular relating the default of the credit card.
-# Here we can see that there are some values for 0 marriage, those values are incorrect and must be corrected.
-ggplot(Default_Dataset, aes(default.payment.next.month, MARRIAGE)) +
-  geom_jitter(aes(color = MARRIAGE), size = 0.5)
-
-#Same that before but with sex
-ggplot(Default_Dataset, aes(default.payment.next.month, SEX)) +
-  geom_jitter(aes(color = SEX), size = 0.5)
-#Same with the payStatus0
-ggplot(Default_Dataset, aes(default.payment.next.month, PAYSTATUS_4)) +
-  geom_jitter(aes(color = SEX), size = 0.5)
-
-########PCA#########
-if(!require(FactoMineR)) install.packages("FactoMineR")
-
+#Let's make a quick PCA to have some idea on how the data is 
 PCADefault <- PCA(Default_Dataset,quali.sup = c(2,3,4,5,24,25,26,27,28,29,30))
 PCADefault
 #We can see that the PCA shows that all the variables PAY_X are correlated in an inmense way, so, we could unify this variables into one unic variable.
@@ -185,25 +168,99 @@ refactorDataset <- function(row) {
   row["AccountStatus"] = floor(valueStatus/6) #We assign an status that is mean of their status. Using the floor function.
   return(row)
 }
-Default_Datasetv2 <- adply(Default_Dataset, 1, refactorDataset)#Apply as before
+Default_Dataset <- adply(Default_Dataset, 1, refactorDataset)#Apply as before
 #Delete old columns
-Default_Datasetv2 = Default_Datasetv2[,-c(6,7,8,9,10,11,25,26,27,28,29,30)]
+Default_Dataset = Default_Dataset[,-c(6,7,8,9,10,11,25,26,27,28,29,30)]
 #Make factor account status
-Default_Datasetv2$AccountStatus = as.factor(Default_Datasetv2$AccountStatus) 
-levels(Default_Datasetv2$AccountStatus) <- c("Delay","Paid minimum","Paid Duly","Good Status")
-#######PCA SECOND VERSION ##########
-PCADefault2 <- PCA(Default_Datasetv2,quali.sup = c(2,3,4,5,18,20))
-PCADefault2
+Default_Dataset$AccountStatus = as.factor(Default_Dataset$AccountStatus) 
+levels(Default_Dataset$AccountStatus) <- c("Delay","Paid minimum","Paid Duly","Good Status")
+#We will add a new variable that will contain a buckets of age 20,30,40,50,etc.
+Default_Dataset$AGE.decade<-cut(Default_Dataset$AGE,c(10,20,30,40,50,60,70,80))
+# Saved pre-processed data set for future preprocessing
+save(Default_Dataset, file = "Default_dataset_preprocessed.Rdata")
+
+#####SOME PLOTS AND OTHER THINGS IN ORDER TO HAVE A CLEAR IDEA OF THE DATA#######
+#The second column are the individuals that will default. As we can see, most of them are from low education, but, there still some outliers.
+ggplot(Default_Dataset, aes(default.payment.next.month, EDUCATION)) +
+  geom_jitter(aes(color = EDUCATION), size = 0.5)+ theme_classic()
+
+#In this plot we can see that the marital status really do not make a difference and dont tell anything in particular relating the default of the credit card.
+# Here we can see that there are some values for 0 marriage, those values are incorrect and must be corrected.
+ggplot(Default_Dataset, aes(default.payment.next.month, MARRIAGE)) +
+  geom_jitter(aes(color = MARRIAGE), size = 0.5)+ theme_classic()
+#Same with Age
+ggplot(Default_Dataset, aes(default.payment.next.month, AGE.decade)) +
+  geom_jitter(aes(color = SEX), size = 0.5)+ theme_classic()
+#Now with density
+qplot(AGE, data = Default_Dataset, geom = "density", fill = default.payment.next.month)
+#Same that before but with sex
+ggplot(Default_Dataset, aes(default.payment.next.month, SEX)) +
+  geom_jitter(aes(color = SEX), size = 0.5)+ theme_classic()
+#Same with the AccountStatus
+ggplot(Default_Dataset, aes(default.payment.next.month, AccountStatus)) +
+  geom_jitter(aes(color = SEX), size = 0.5)+ theme_classic()
+#Same but with the color scale of marriage
+ggplot(Default_Dataset, aes(default.payment.next.month, AccountStatus)) +
+  geom_jitter(aes(color = MARRIAGE), size = 0.5) + theme_classic()
+#Here we can see the relation between account status and delay. We can see that the account with the status of "good status" do not have any delay, "Paid Duly"
+#have some delay like paid minimum (but more) and the accounts of Delay always have delay.
+ggplot(Default_Dataset, aes(Delay, AccountStatus)) +
+  geom_jitter(aes(color = MARRIAGE), size = 0.5)+ theme_classic()
+#Here we can see in a different way the relation of education with default. 
+ggplot(Default_Dataset, aes(x=EDUCATION, fill = default.payment.next.month))+
+  geom_bar(width = 1)+
+  coord_polar()+
+  theme_classic()
+#RELATION BTWN LIMIT_BAL AND EDUCATION
+ggplot(Default_Dataset, aes(x = EDUCATION, fill = LIMIT_BAL)) +
+  geom_bar() +
+  labs(x = 'Education') +
+  labs(y = 'Limit crédit') +
+  theme_few()
+#Relation between age and default
+ggplot(Default_Dataset, aes(AGE, fill = default.payment.next.month)) + 
+  geom_histogram(binwidth = 6) + 
+  facet_grid(.~EDUCATION) + 
+  theme_fivethirtyeight()
+#Correlations Between Limit Balance, Bill Amounts & Payments: 
+#When we reflect the correlations between limit balances, bill amounts and payments amounts; it presents us that there’s a low correlation between the 
+#limit balances and payments and bill amounts. Howevet it can be seen that bill amounts has high correlation
+#between each other as expected since the bills a reflecting the cumulative amounts.
+cor <- cor(subset(Default_Dataset, select = c(LIMIT_BAL,BILL_AMT1,BILL_AMT2,BILL_AMT3,BILL_AMT4,BILL_AMT5,PAY_AMT1,PAY_AMT2,PAY_AMT3,PAY_AMT4,PAY_AMT5,PAY_AMT6)))
+corrplot(cor, method="number")
+#Personal Balance Limits Probabilities & Given Limits By Age
+
+#In this plot we explore the probability of having a higher balance limit by age and comparing the results of the limit of credit by default or not default
+#We can see that the no default individuals have more credit limit, but not that more, we can see also, that the blue line, which is the mean, it is 200k$ of limit
+#of credit for all individuals, but with the age advance, the limit is lower. 
+#From this plot we can interpret that the bank preffers to give more credit and risk more, because we can see how people with more than 200k$ of credit limit defaults.
+#It will be a decission of the bank to change the politics of credit limit, we an suggest to decrease the credit limit ntil the 40's.
+ggplot(aes(x=AGE,y=LIMIT_BAL/1000),data=subset(Default_Dataset,!is.na(AGE.decade)))+
+  xlab("Age") + 
+  ylab("Balance Limit x1000") +
+  coord_cartesian(xlim = c(20,60),ylim = c(0,700))+
+  scale_color_brewer(palette = "Pastel2")+
+  geom_jitter(alpha=0.5, position = position_jitter(h=0), aes(color=AGE.decade)) +
+  geom_smooth(stat='summary', fun.y=mean) + #The blue line.
+  geom_smooth(stat='summary', fun.y=quantile, fun.args = list(probs = 0.05), color = 'green', linetype=2) +
+  geom_smooth(stat='summary', fun.y=quantile, fun.args = list(probs = 0.3), color = 'yellow', linetype=2) +
+  geom_smooth(stat='summary', fun.y=quantile, fun.args = list(probs = 0.5), color = 'red', linetype=2) +
+  geom_smooth(stat='summary', fun.y=quantile, fun.args = list(probs = 0.8), color = 'black', linetype=2)+
+  geom_smooth(stat='summary', fun.y=quantile, fun.args = list(probs = 0.95), color = 'purple', linetype=2)+
+  facet_wrap(~default.payment.next.month)
+########PCA#########
+PCADefault <- PCA(Default_Dataset,quali.sup = c(2,3,4,5,18,20,21),ncp = 10)
+PCADefault
 #That PCA make a lot of sense, the payments are inversely correlated with the Delay, it makes sense, because if you have more delay, mean that you pay less
 #Also inversely correlate with the limit of credit.
 #The variables BILL_ATMX and PAY_ATMX are very correlated with themselves, Also make sense.
 #Best and worst represented.
-cos1 = PCADefault2$ind$cos2 #Return the cos of the individuals
+cos1 = PCADefault$ind$cos2 #Return the cos of the individuals
 which.max(cos1[,1]) 
 which.min(cos1[,1]) 
 
 #Contributions
-contribution <- PCADefault2$ind$contrib
+contribution <- PCADefault$ind$contrib
 
 bestinfirstPC <- sort(contribution[,1],decreasing = TRUE)[1:3] #Returns the individuals that are more influencial(Contribution) in the first principal component
 bestinfirstPC
@@ -212,12 +269,12 @@ bestinsecondPC <- sort(contribution[,2],decreasing = TRUE)[1:3] #Returns the ind
 bestinsecondPC
 
 #Best represented variables
-cos2 = PCADefault2$var$cos2 #Returns the cos of the variables.
+cos2 = PCADefault$var$cos2 #Returns the cos of the variables.
 which.max(cos2[,1]) #BILL_AMT4 is the best represented variable in the first factorial plame
-which.min(cos2[,1]) #PAY_2 is the worst represented variable in the first factorial plame
+which.min(cos2[,1]) #DELAY is the worst represented variable in the first factorial plame
 
 #Most influencial variables
-contribution2 <- PCADefault2$var$contrib
+contribution2 <- PCADefault$var$contrib
 
 bestinfirstPCvar <- sort(contribution2[,1],decreasing = TRUE)[1:3] #Returns the variables that are more influencial(Contribution) in the first principal component
 bestinfirstPCvar
@@ -226,10 +283,10 @@ bestinsecondPCvar <- sort(contribution2[,2],decreasing = TRUE)[1:3] #Returns the
 bestinsecondPCvar
 
 #Significant dimensions
-dim <- sum(as.numeric(PCADefault2$eig[,3] <= 80)) #7 significant dimensions
+dim <- sum(as.numeric(PCADefault$eig[,3] <= 80)) #5 significant dimensions
 
 #NIPALS ALGORITHM TO OBTAIN THE 7 PRINCIPAL COMPONENTS
-nipals <- function(X, rankX = 7, suppl.col =  c(2,3,4,5,24,25,26,27,28,29,30), eps = 1e-06) {
+nipals <- function(X, rankX = 5, suppl.col =  c(2,3,4,5,18,20,21), eps = 1e-06) {
   X <- as.matrix(X[,-suppl.col])
   
   # Center Matrix X
@@ -328,7 +385,7 @@ theta <- seq(0,2*pi, length.out = 100)
 circle = data.frame(x = cos(theta), y = sin(theta))
 p <- ggplot(circle, aes(x,y)) + geom_path()
 
-df <- data.frame(Dim1 = var_prj[,1], Dim2 = var_prj[,2], variable = colnames(Default_Dataset[,- c(2,3,4,5,24,25,26,27,28,29,30)]))
+df <- data.frame(Dim1 = var_prj[,1], Dim2 = var_prj[,2], variable = colnames(Default_Dataset[,- c(2,3,4,5,18,20,21)]))
 
 # Circle with labels
 circle_plot <- p + geom_text(data=df, mapping = aes(x=Dim1, y=Dim2, label=variable, colour = variable)) + coord_fixed(ratio = 1) + labs(x = "Dim1", y = "Dim2")
@@ -342,29 +399,39 @@ circle_plot
 
 
 ########CLUSTERING########
-# Select significant dimensions whose cumulative percentage of variance <= 80%
-dim <- sum(as.numeric(PCADefault$eig[,3] <= 80))
-#Select significant factors
-Psi <- PCADefault$ind$coord[,1:dim]
-d <- dist(Psi, method = "euclidean")
-# Perform hierarchical clustering but not very usefull data...
-hc <- hclust(d, method = "ward.D2")
-plotHC = plot(hc) 
-barplotHC = barplot(hc$height)
-
 #Kmeans
+#Here, as we are working on a large data set, we will cut the tree.
 # Select significant dimensions whose cumulative percentage of variance <= 80%
 dim <- sum(as.numeric(PCADefault$eig[,3] <= 80))
 Psi <- PCADefault$ind$coord[,1:dim]
-Psi <- matrix(0, nrow = nrow(DefaultNoSupple), ncol = rankX)
 centers = 20
-defaultKmeans1 <- kmeans(Default_Dataset[,-c(2,3,4,5,24,25,26,27,28,29,30)], centers =centers, iter.max = 50)
-defaultKmeans2 <- kmeans(Default_Dataset[,-c(2,3,4,5,24,25,26,27,28,29,30)], centers =centers, iter.max = 50)
+defaultKmeans1 <- kmeans(Psi, centers =centers, iter.max = 50)
+defaultKmeans2 <- kmeans(Psi, centers =centers, iter.max = 50)
 table(defaultKmeans1$cluster,defaultKmeans2$cluster)
 clas <- (defaultKmeans2$cluster-1)*centers+defaultKmeans1$cluster
 freq <- table(clas)
-cdclas <- aggregate(as.data.frame(Default_Dataset),list(clas),mean)[,2:(4+1)]
-library(cluster) 
+freq
+cdclas <- aggregate(as.data.frame(Psi),list(clas),mean)[,2:(dim+1)]
+d2 <- dist(cdclas) #matrix of distances
+h2 <- hclust(d2,method="ward.D2",members=freq) #Hiretical clustering, members = freq because not all the centroids have the same importance.
+plot(h2)
+barplot(h2$height[(nrow(cdclas)-40):(nrow(cdclas)-1)]) #Plot last 40 aggregations
+nc = 7 # for instance
+c2 <- cutree(h2,nc)
+cdg <- aggregate((diag(freq/sum(freq)) %*% as.matrix(cdclas)),list(c2),sum)[,2:(dim+1)] 
+k6 <- kmeans(Psi,centers=cdg)
+Bss <- sum(rowSums(k6$centers^2)*k6$size)
+Wss <- sum(k6$withinss)
+Ib6 <- 100*Bss/(Bss+Wss)
+Ib6
+#Analysis of the clustering
+k6$cluster <- as.factor(k6$cluster)
+ggplot(Default_Dataset, aes(AGE, EDUCATION, color = k6$cluster)) + geom_point()
+#Ploting the kmeans using the cutted tree. 
+clusplot(Psi, k6$cluster, color=TRUE, shade=TRUE, 
+         labels=2, lines=0)
+####
+plot(sk2)
 clusplot(Default_Dataset, defaultKmeans$cluster, color=TRUE, shade=TRUE, 
          labels=3, lines=2)
 #Here we can see the different clusters. cluster 5 for example are the individuals with perfect behaiviour, always pay and no delays.
