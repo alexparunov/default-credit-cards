@@ -12,7 +12,6 @@ if(!require(ggthemes))install.packages("ggthemes") # visualization
 if(!require(scales))install.packages("scales") # visualization
 if(!require(corrplot))install.packages("corrplot") # plots
 if(!require(FactoMineR)) install.packages("fpc")
-if(!require(fpc)) install.packages("FactoMineR")
 if(!require(cluster)) install.packages("cluster")
 
 set.seed(1)
@@ -60,7 +59,7 @@ summary(Default_Dataset)
 
 #######PRE PROCESSING ##########
 
-# Set SEX as factor and change levels for more clarity
+# Set SEX as factor and uhochange levels for more clarity
 Default_Dataset$SEX <- as.factor(Default_Dataset$SEX)
 levels(Default_Dataset$SEX) <- c("male","female")
 
@@ -169,18 +168,19 @@ refactorDataset <- function(row) {
   return(row)
 }
 Default_Dataset <- adply(Default_Dataset, 1, refactorDataset)#Apply as before
-#Delete old columns
-Default_Dataset = Default_Dataset[,-c(6,7,8,9,10,11,25,26,27,28,29,30)]
 #Make factor account status
 Default_Dataset$AccountStatus = as.factor(Default_Dataset$AccountStatus) 
 levels(Default_Dataset$AccountStatus) <- c("Delay","Paid minimum","Paid Duly","Good Status")
+#Create means for payments and bills for PCA, so we can unify more the data.
+Default_Dataset$MeanBill = rowMeans(Default_Dataset[,12:17])
+Default_Dataset$MeanPay = rowMeans(Default_Dataset[,18:23])
 #We will add a new variable that will contain a buckets of age 20,30,40,50,etc.
 Default_Dataset$AGE.decade<-cut(Default_Dataset$AGE,c(10,20,30,40,50,60,70,80))
 # Saved pre-processed data set for future preprocessing
 save(Default_Dataset, file = "Default_dataset_preprocessed.Rdata")
 
 #####SOME PLOTS AND OTHER THINGS IN ORDER TO HAVE A CLEAR IDEA OF THE DATA#######
-#The second column are the individuals that will default. As we can see, most of them are from low education, but, there still some outliers.
+#The second column are the individuals that will default. As we can see, individuals with any education can default.
 ggplot(Default_Dataset, aes(default.payment.next.month, EDUCATION)) +
   geom_jitter(aes(color = EDUCATION), size = 0.5)+ theme_classic()
 
@@ -249,7 +249,7 @@ ggplot(aes(x=AGE,y=LIMIT_BAL/1000),data=subset(Default_Dataset,!is.na(AGE.decade
   geom_smooth(stat='summary', fun.y=quantile, fun.args = list(probs = 0.95), color = 'purple', linetype=2)+
   facet_wrap(~default.payment.next.month)
 ########PCA#########
-PCADefault <- PCA(Default_Dataset,quali.sup = c(2,3,4,5,18,20,21),ncp = 10)
+PCADefault = PCA(Default_Dataset[,-c((2:30), 32, 35)],ncp = 10)
 PCADefault
 #That PCA make a lot of sense, the payments are inversely correlated with the Delay, it makes sense, because if you have more delay, mean that you pay less
 #Also inversely correlate with the limit of credit.
@@ -285,124 +285,11 @@ bestinsecondPCvar
 #Significant dimensions
 dim <- sum(as.numeric(PCADefault$eig[,3] <= 80)) #5 significant dimensions
 
-#NIPALS ALGORITHM TO OBTAIN THE 7 PRINCIPAL COMPONENTS
-nipals <- function(X, rankX = 5, suppl.col =  c(2,3,4,5,18,20,21), eps = 1e-06) {
-  X <- as.matrix(X[,-suppl.col])
-  
-  # Center Matrix X
-  for(i in 1:ncol(X)) {
-    X[,i] <- (X[,i] - mean(X[,i]))/(sqrt(var(X[,i])))
-  }
-  X0 <- X
-  # Projections of variables
-  Phi <- matrix(0, nrow = ncol(X0), ncol = rankX)
-  # Projections of individuals
-  Psi <- matrix(0, nrow = nrow(X0), ncol = rankX)
-  # sqrt(eigenvalues of t(X) %*% X)
-  singular_values <- rep(0, length = rankX)
-  
-  # Initial vector u for determining convergence
-  for(h in 1:rankX) {
-    u0 <- rep(0, ncol(X0))
-    psi <- as.matrix(rowMeans(X0))
-    u <- as.numeric(t(X0) %*% psi)
-    
-    # Initial distance is simply distance to origin, since u0 is a 0 vector.
-    dist <- sqrt(as.numeric(u%*%u))
-    while(dist > eps) {
-      u <- as.numeric(t(X0) %*% psi)
-      
-      # normalize vector u
-      u <- u/sqrt(u %*% u)
-      psi <- X0 %*% as.matrix(u)
-      
-      # Update variables for next iteration
-      dist <- sqrt(sum((u - u0)^2))
-      u0 <- u
-    }
-    
-    singular_values[h] <- sqrt(sum(psi*psi))
-    # Direct formula of finding projection of variable
-    Phi[,h] <- singular_values[h]*as.matrix(u)
-    # Direct formula of finding projection of individuals
-    Psi[,h] <- X0 %*% as.matrix(u)
-    
-    # deflation
-    X0 <- X0 - psi %*% t(as.matrix(u))
-  }
-  
-  # Find SVD of X. U = Standardized Phi
-  Phi_stand <- Phi
-  for(i in 1:ncol(Phi_stand)) {
-    Phi_stand[,i] <- Phi[,i]/(sqrt(Phi[,i] %*% Phi[,i]))
-  }
-  U <- Phi_stand
-  
-  # Standardize Psis, so that we can find V = Psi_stand.
-  Psi_stand <- Psi
-  for(i in 1:ncol(Psi_stand)) {
-    Psi_stand[,i] <- Psi[,i]/sqrt(Psi[,i] %*% Psi[,i])
-  }
-  
-  V <- Psi_stand
-  
-  rownames(Phi) <- colnames(X0)
-  rownames(Psi) <- rownames(X0)
-  rownames(U) <- colnames(X0)
-  rownames(V) <- rownames(X0)
-  colNames <- vector(length = ncol(Phi))
-  
-  for(i in 1:length(colNames)) {
-    colNames[i] <- paste("Dim",i)
-  }
-  colnames(Phi) <- colNames
-  colnames(Psi) <- colNames
-  
-  svd <- list(U = U, V = V)
-  
-  return(list(Phi = Phi_stand, Psi = Psi, singular_values = singular_values,
-              svd = svd))
-}
-
-#execute nipals algorithm
-nip_res_default = nipals(Default_Dataset)
-# In order to plot biplots we need to use matrices U and V returned from niples function
-
-var_prj <- nip_res_default$Phi
-ind_prj <- nip_res_default$Psi
-U <- nip_res_default$svd$U
-V <- nip_res_default$svd$V
-
-# Biplot in R^p
-biplot(ind_prj, U) #TAKES A VERYYYYYY LONG TIME.
-
-# Compute rotated principal components obtained in NIPALS function
-pc.rot <- varimax(var_prj)
-#Not sure about that, Should we take the eigen values? HW 4 review.
-# Plot rotated variables
-# Plotting unit circle
-theta <- seq(0,2*pi, length.out = 100)
-circle = data.frame(x = cos(theta), y = sin(theta))
-p <- ggplot(circle, aes(x,y)) + geom_path()
-
-df <- data.frame(Dim1 = var_prj[,1], Dim2 = var_prj[,2], variable = colnames(Default_Dataset[,- c(2,3,4,5,18,20,21)]))
-
-# Circle with labels
-circle_plot <- p + geom_text(data=df, mapping = aes(x=Dim1, y=Dim2, label=variable, colour = variable)) + coord_fixed(ratio = 1) + labs(x = "Dim1", y = "Dim2")
-# Adding horizontal and vertical axes
-circle_plot <- circle_plot + geom_hline(yintercept = 0, linetype = 2) + geom_vline(xintercept = 0, linetype = 2)
-# Adding arrows to each variable
-circle_plot <- circle_plot + geom_segment(mapping = aes(x=0,y=0,xend=var_prj[,1]*0.95,yend=var_prj[,2]*0.95), data=df, arrow=arrow(length = unit(0.01,"npc")), lineend = "round", alpha = 0.7)
-
-# Plot rotated variables
-circle_plot
-
-
 ########CLUSTERING########
 #Kmeans
 #Here, as we are working on a large data set, we will cut the tree.
 # Select significant dimensions whose cumulative percentage of variance <= 80%
-dim <- sum(as.numeric(PCADefault$eig[,3] <= 80))
+dim <- sum(as.numeric(PCADefault$eig[,3] <= 90))
 Psi <- PCADefault$ind$coord[,1:dim]
 centers = 20
 defaultKmeans1 <- kmeans(Psi, centers =centers, iter.max = 50)
@@ -416,22 +303,33 @@ d2 <- dist(cdclas) #matrix of distances
 h2 <- hclust(d2,method="ward.D2",members=freq) #Hiretical clustering, members = freq because not all the centroids have the same importance.
 plot(h2)
 barplot(h2$height[(nrow(cdclas)-40):(nrow(cdclas)-1)]) #Plot last 40 aggregations
-nc = 7 # for instance
+nc = 4 # for instance, number of clusters.
 c2 <- cutree(h2,nc)
 cdg <- aggregate((diag(freq/sum(freq)) %*% as.matrix(cdclas)),list(c2),sum)[,2:(dim+1)] 
-k6 <- kmeans(Psi,centers=cdg)
-Bss <- sum(rowSums(k6$centers^2)*k6$size)
-Wss <- sum(k6$withinss)
+finalKmeans <- kmeans(Psi,centers=cdg)
+Bss <- sum(rowSums(finalKmeans$centers^2)*finalKmeans$size)
+Wss <- sum(finalKmeans$withinss)
 Ib6 <- 100*Bss/(Bss+Wss)
 Ib6
 #Analysis of the clustering
-k6$cluster <- as.factor(k6$cluster)
-ggplot(Default_Dataset, aes(AGE, EDUCATION, color = k6$cluster)) + geom_point()
-#Ploting the kmeans using the cutted tree. 
-clusplot(Psi, k6$cluster, color=TRUE, shade=TRUE, 
+finalKmeans$cluster <- as.factor(finalKmeans$cluster)
+#How many individuals per cluster? 
+#Needs interpretation depend of PCA...
+finalKmeans$size
+finalKmeans$cluster
+Default_Dataset <- cbind(Default_Dataset, clusterNum = finalKmeans$cluster)
+Datacluste1 = Default_Dataset[Default_Dataset$clusterNum==1,]
+sum(Datacluste1$default.payment.next.month=='no') 
+summary(Datacluste1)
+Datacluster2 = Default_Dataset[Default_Dataset$clusterNum==2,]
+summary(Datacluster2)
+Datacluster3 = Default_Dataset[Default_Dataset$clusterNum==3,]
+summary(Datacluster3)
+Datacluster4 = Default_Dataset[Default_Dataset$clusterNum==4,]
+summary(Datacluster4)
+
+#We can see individuals like the 28717 and the 28004 that are very separated from the rest. If we see the bills and the pays we say that are huge. Paymets and bills of more than 1 million dolars. 
+clusplot(Psi, finalKmeans$cluster, color=TRUE, shade=TRUE, 
          labels=2, lines=0)
-####
-plot(sk2)
-clusplot(Default_Dataset, defaultKmeans$cluster, color=TRUE, shade=TRUE, 
-         labels=3, lines=2)
+
 #Here we can see the different clusters. cluster 5 for example are the individuals with perfect behaiviour, always pay and no delays.
