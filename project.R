@@ -129,7 +129,7 @@ for(i in c(0,2,3,4,5,6))
 # We can load data set directly and skip above given steps
 summary(Default_Dataset)
 #Let's make a quick PCA to have some idea on how the data is 
-PCADefault <- PCA(Default_Dataset,quali.sup = c(2,3,4,5,24,25,26,27,28,29,30))
+PCADefault <- PCA(Default_Dataset,quali.sup = c(2,3,4,24,25,26,27,28,29,30,32,35))
 PCADefault
 #We can see that the PCA shows that all the variables PAY_X are correlated in an inmense way, so, we could unify this variables into one unic variable.
 #We will unify the variables in this way:
@@ -202,6 +202,9 @@ ggplot(Default_Dataset, aes(default.payment.next.month, AccountStatus)) +
 #Same but with the color scale of marriage
 ggplot(Default_Dataset, aes(default.payment.next.month, AccountStatus)) +
   geom_jitter(aes(color = MARRIAGE), size = 0.5) + theme_classic()
+#same buy with education scale
+ggplot(Default_Dataset, aes(default.payment.next.month, AccountStatus)) +
+  geom_jitter(aes(color = EDUCATION), size = 0.5) + theme_classic()
 #Here we can see the relation between account status and delay. We can see that the account with the status of "good status" do not have any delay, "Paid Duly"
 #have some delay like paid minimum (but more) and the accounts of Delay always have delay.
 ggplot(Default_Dataset, aes(Delay, AccountStatus)) +
@@ -249,7 +252,7 @@ ggplot(aes(x=AGE,y=LIMIT_BAL/1000),data=subset(Default_Dataset,!is.na(AGE.decade
   geom_smooth(stat='summary', fun.y=quantile, fun.args = list(probs = 0.95), color = 'purple', linetype=2)+
   facet_wrap(~default.payment.next.month)
 ########PCA#########
-PCADefault = PCA(Default_Dataset[,-c((2:30), 32, 35)],ncp = 10)
+PCADefault = PCA(Default_Dataset[,-c((2:4),(6:30), 32, 35)],ncp = 10)
 PCADefault
 #That PCA make a lot of sense, the payments are inversely correlated with the Delay, it makes sense, because if you have more delay, mean that you pay less
 #Also inversely correlate with the limit of credit.
@@ -303,7 +306,7 @@ d2 <- dist(cdclas) #matrix of distances
 h2 <- hclust(d2,method="ward.D2",members=freq) #Hiretical clustering, members = freq because not all the centroids have the same importance.
 plot(h2)
 barplot(h2$height[(nrow(cdclas)-40):(nrow(cdclas)-1)]) #Plot last 40 aggregations
-nc = 4 # for instance, number of clusters.
+nc = 3 # for instance, number of clusters.
 c2 <- cutree(h2,nc)
 cdg <- aggregate((diag(freq/sum(freq)) %*% as.matrix(cdclas)),list(c2),sum)[,2:(dim+1)] 
 finalKmeans <- kmeans(Psi,centers=cdg)
@@ -325,8 +328,6 @@ Datacluster2 = Default_Dataset[Default_Dataset$clusterNum==2,]
 summary(Datacluster2)
 Datacluster3 = Default_Dataset[Default_Dataset$clusterNum==3,]
 summary(Datacluster3)
-Datacluster4 = Default_Dataset[Default_Dataset$clusterNum==4,]
-summary(Datacluster4)
 
 #We can see individuals like the 28717 and the 28004 that are very separated from the rest. If we see the bills and the pays we say that are huge. Paymets and bills of more than 1 million dolars. 
 clusplot(Psi, finalKmeans$cluster, color=TRUE, shade=TRUE, 
