@@ -14,7 +14,7 @@ if(!require(corrplot))install.packages("corrplot") # plots
 if(!require(FactoMineR)) install.packages("fpc")
 if(!require(cluster)) install.packages("cluster")
 
-set.seed(1)
+set.seed(101)
 # Setting working directory as path of current file
 setwd(dirname(getActiveDocumentContext()$path))
 ####LOAD ENVIROMENT#####
@@ -288,7 +288,7 @@ bestinsecondPCvar
 #Significant dimensions
 dim <- sum(as.numeric(PCADefault$eig[,3] <= 80)) #5 significant dimensions
 
-########CLUSTERING########
+#######Clustering ###### 
 #Kmeans
 #Here, as we are working on a large data set, we will cut the tree.
 # Select significant dimensions whose cumulative percentage of variance <= 80%
@@ -306,7 +306,7 @@ d2 <- dist(cdclas) #matrix of distances
 h2 <- hclust(d2,method="ward.D2",members=freq) #Hiretical clustering, members = freq because not all the centroids have the same importance.
 plot(h2)
 barplot(h2$height[(nrow(cdclas)-40):(nrow(cdclas)-1)]) #Plot last 40 aggregations
-nc = 3 # for instance, number of clusters.
+nc = 7 # for instance, number of clusters.
 c2 <- cutree(h2,nc)
 cdg <- aggregate((diag(freq/sum(freq)) %*% as.matrix(cdclas)),list(c2),sum)[,2:(dim+1)] 
 finalKmeans <- kmeans(Psi,centers=cdg)
@@ -328,9 +328,50 @@ Datacluster2 = Default_Dataset[Default_Dataset$clusterNum==2,]
 summary(Datacluster2)
 Datacluster3 = Default_Dataset[Default_Dataset$clusterNum==3,]
 summary(Datacluster3)
+Datacluster4 = Default_Dataset[Default_Dataset$clusterNum==4,]
+summary(Datacluster4)
+Datacluster5 = Default_Dataset[Default_Dataset$clusterNum==5,]
+summary(Datacluster5)
+Datacluster6 = Default_Dataset[Default_Dataset$clusterNum==6,]
+summary(Datacluster6)
+Datacluster7 = Default_Dataset[Default_Dataset$clusterNum==7,]
+summary(Datacluster7)
 
-#We can see individuals like the 28717 and the 28004 that are very separated from the rest. If we see the bills and the pays we say that are huge. Paymets and bills of more than 1 million dolars. 
 clusplot(Psi, finalKmeans$cluster, color=TRUE, shade=TRUE, 
          labels=2, lines=0)
+#zoom
+clusplot(Psi, finalKmeans$cluster, color=TRUE, shade=TRUE, 
+         labels=2, lines=0,ylim = c(-8,3), xlim = c(-5,10))
 
-#Here we can see the different clusters. cluster 5 for example are the individuals with perfect behaiviour, always pay and no delays.
+#DECISION TREE
+library(rpart)
+# grow tree
+require(caTools)
+#
+#Randomly shuffle the data
+Default_shuffled<-Default_Dataset[sample(nrow(Default_Dataset)),]
+sample = sample.split(Default_shuffled, SplitRatio = .75)
+train = subset(Default_shuffled, sample == TRUE)
+test  = subset(Default_shuffled, sample == FALSE)
+fit <-  rpart(default.payment.next.month ~ ., data = train, method = "class",control = rpart.control(minsplit = 10,cp = 0.001))
+print(fit)
+summary(fit)
+
+fit$cptable
+
+plotcp(fit)
+
+fit.pruned <- prune(fit, cp = 0.01)
+
+library(rpart.plot)
+
+
+prp(fit, type = 2, extra = 104,
+    fallen.leaves = TRUE, main="Decision Tree")
+fit.pred <- predict(fit.pruned, test, type="class")
+fit.perf <- table(test$default.payment.next.month, fit.pred,
+                  dnn=c("Actual", "Predicted"))
+fit.perf
+## We estimate the % of error of the model
+errortree = (fit.perf[2,1] + fit.perf[1,2]) /nrow(test)
+print(errortree) #18%
