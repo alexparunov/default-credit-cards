@@ -375,3 +375,7 @@ fit.perf
 ## We estimate the % of error of the model
 errortree = (fit.perf[2,1] + fit.perf[1,2]) /nrow(test)
 print(errortree) #18%
+
+##VARIABLE IMPORTANCE##
+require(rpart)
+importance = rpart(data = Default_Dataset, formula = default.payment.next.month~.,minsplit = 10,cp = 0.001)
