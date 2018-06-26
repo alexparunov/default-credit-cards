@@ -398,7 +398,6 @@ fit.perf
 errortree = (fit.perf[2,1] + fit.perf[1,2]) /nrow(test)
 print(errortree) #18%
 
-
 # Random Forest
 
 library(randomForest)
