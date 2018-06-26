@@ -13,6 +13,7 @@ if(!require(scales))install.packages("scales") # visualization
 if(!require(corrplot))install.packages("corrplot") # plots
 if(!require(FactoMineR)) install.packages("fpc")
 if(!require(cluster)) install.packages("cluster")
+if(!require(mice)) install.packages("mice")
 
 set.seed(101)
 # Setting working directory as path of current file
@@ -70,7 +71,7 @@ Default_Dataset$MARRIAGE[Default_Dataset$MARRIAGE == 0] <- NA
 Default_Dataset$EDUCATION[Default_Dataset$EDUCATION < 1 | Default_Dataset$EDUCATION > 4] <- NA
 
 # Imputing NAs
-imp <- mice(Default_Dataset, m = 1)
+imp <- mice::mice(Default_Dataset, m = 1)
 Default_Dataset <- complete(imp)
 
 # Set MARRIAGE as factor and change levels for more clarity
@@ -127,7 +128,9 @@ for(i in c(0,2,3,4,5,6))
   Default_Dataset[,varStatus] = as.factor(Default_Dataset[,varStatus])
 }
 # We can load data set directly and skip above given steps
+load(file = "Default_dataset_preprocessed.Rdata")
 summary(Default_Dataset)
+
 #Let's make a quick PCA to have some idea on how the data is 
 PCADefault <- PCA(Default_Dataset,quali.sup = c(2,3,4,24,25,26,27,28,29,30,32,35))
 PCADefault
@@ -168,22 +171,38 @@ refactorDataset <- function(row) {
   return(row)
 }
 Default_Dataset <- adply(Default_Dataset, 1, refactorDataset)#Apply as before
+
 #Make factor account status
 Default_Dataset$AccountStatus = as.factor(Default_Dataset$AccountStatus) 
 levels(Default_Dataset$AccountStatus) <- c("Delay","Paid minimum","Paid Duly","Good Status")
+
 #Create means for payments and bills for PCA, so we can unify more the data.
 Default_Dataset$MeanBill = rowMeans(Default_Dataset[,12:17])
 Default_Dataset$MeanPay = rowMeans(Default_Dataset[,18:23])
+
 #We will add a new variable that will contain a buckets of age 20,30,40,50,etc.
 Default_Dataset$AGE.decade<-cut(Default_Dataset$AGE,c(10,20,30,40,50,60,70,80))
+
+
+# Detect outliers using robust mahalanobis distance and remove them
+library(chemometrics)
+moutlier= Moutlier(X = Default_Dataset[,-c((2:30), 31,32, 35)],quantile = 0.999)
+outliers = sort(x = moutlier$rd,decreasing = TRUE, index.return=TRUE)
+outlierstodelete = outliers$ix[1:30] #DELETE 0.001% --> 30 INDIVIDUALS
+Default_Dataset = Default_Dataset[-outlierstodelete,]
+
 # Saved pre-processed data set for future preprocessing
 save(Default_Dataset, file = "Default_dataset_preprocessed.Rdata")
 
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+load(file = "Default_dataset_preprocessed.Rdata")
+
+
+if(!require(ggplot2)) install.packages("ggplot2"); require(ggplot2)
 #####SOME PLOTS AND OTHER THINGS IN ORDER TO HAVE A CLEAR IDEA OF THE DATA#######
 #The second column are the individuals that will default. As we can see, individuals with any education can default.
 ggplot(Default_Dataset, aes(default.payment.next.month, EDUCATION)) +
   geom_jitter(aes(color = EDUCATION), size = 0.5)+ theme_classic()
-
 #In this plot we can see that the marital status really do not make a difference and dont tell anything in particular relating the default of the credit card.
 # Here we can see that there are some values for 0 marriage, those values are incorrect and must be corrected.
 ggplot(Default_Dataset, aes(default.payment.next.month, MARRIAGE)) +
@@ -347,12 +366,15 @@ clusplot(Psi, finalKmeans$cluster, color=TRUE, shade=TRUE,
 library(rpart)
 # grow tree
 require(caTools)
-#
+
 #Randomly shuffle the data
 Default_shuffled<-Default_Dataset[sample(nrow(Default_Dataset)),]
-sample = sample.split(Default_shuffled, SplitRatio = .75)
-train = subset(Default_shuffled, sample == TRUE)
-test  = subset(Default_shuffled, sample == FALSE)
+
+train_indexes <- sample(nrow(Default_shuffled), size = floor(nrow(Default_shuffled)*0.75))
+
+train <- Default_Dataset[train_indexes,]
+test <- Default_shuffled[-train_indexes,]
+
 fit <-  rpart(default.payment.next.month ~ ., data = train, method = "class",control = rpart.control(minsplit = 10,cp = 0.001))
 print(fit)
 summary(fit)
@@ -375,3 +397,83 @@ fit.perf
 ## We estimate the % of error of the model
 errortree = (fit.perf[2,1] + fit.perf[1,2]) /nrow(test)
 print(errortree) #18%
+
+
+# Random Forest
+
+library(randomForest)
+
+# Find optimal number of trees based on lowest OOB
+
+(ntrees <- round(10^seq(1,3.7,by=0.2)))
+# prepare the structure to store the partial results
+rf.results <- matrix (rep(0,2*length(ntrees)),nrow=length(ntrees))
+colnames (rf.results) <- c("ntrees", "OOB")
+rf.results[,"ntrees"] <- ntrees
+rf.results[,"OOB"] <- 0
+
+ii <- 1
+for (nt in ntrees)
+{ 
+  print(nt)
+  model.rf <- randomForest(default.payment.next.month~ ., data=train, ntree=nt, proximity=FALSE)
+  
+  # get the OOB
+  rf.results[ii,"OOB"] <- model.rf$err.rate[nt,1]
+  # Free memory
+  gc()
+  ii <- ii+1
+}
+
+# Perform cross validation for RandomForest
+
+library(TunePareto)
+
+model.CV <- function (k) {
+  CV.folds <- generateCVRuns(train$default.payment.next.month, ntimes=1, nfold=k, stratified=TRUE)
+  train_data <- train
+  
+  cv.results <- matrix (rep(0,4*k),nrow=k)
+  colnames (cv.results) <- c("k","fold","TR error","VA error")
+  
+  all.cv.results <- list()
+  cv.results[,"TR error"] <- 0
+  cv.results[,"VA error"] <- 0
+  
+  for (j in 1:k) {
+    print(j)
+    # get VA data
+    va <- unlist(CV.folds[[1]][[j]])
+    #print(length(va))
+    # train on TR data
+    my.model.TR <- randomForest(default.payment.next.month ~ ., data=train_data[-va,], ntree=100, proximity=FALSE) 
+    
+    # predict TR data
+    pred.va <- my.model.TR$predicted
+    tab <- table(Truth = train[-va,]$default.payment.next.month, Pred = pred.va)
+    
+    cv.results[j,"TR error"] <- 1-sum(tab[row(tab)==col(tab)])/sum(tab)
+    
+    # predict VA data
+    pred.va <- predict (my.model.TR, train_data[va, -which(colnames(train_data) == "default.payment.next.month")], type="class")
+    tab <- table(Truth = train_data[va,]$default.payment.next.month, Pred = pred.va)
+    
+    cv.results[j,"VA error"] <- 1-sum(tab[row(tab)==col(tab)])/sum(tab)
+    
+    all.cv.results[[j]] <- cv.results
+  }
+  
+  return(all.cv.results)
+  
+}
+
+k <- 10
+rf.cv <- model.CV(k)
+rf.cv.df <- as.data.frame(rf.cv[10])
+
+rf.cv.df <- rf.cv.df[,c(-1,-2)]
+
+pe.hat <- 0.1859556
+dev <- sqrt(pe.hat*(1-pe.hat)/floor(length(train_indexes)))*1.967
+
+sprintf("(%f,%f)", pe.hat-dev,pe.hat+dev)
