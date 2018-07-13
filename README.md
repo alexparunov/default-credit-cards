@@ -13,8 +13,8 @@ The steps are written in R script and results are interpreted in report.
 #### Best Results
 
 ```
-Decision Trees: Accuracy of 81.4\%
-Random Forest with 100 trees: Accuracy of 81.6\%
+Decision Trees: Accuracy of 81.4%
+Random Forest with 100 trees: Accuracy of 81.6%
 ```
 
 Official data set can be found on: https://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients
