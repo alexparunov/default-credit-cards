@@ -367,6 +367,7 @@ library(rpart)
 # grow tree
 require(caTools)
 
+set.seed(101)
 #Randomly shuffle the data
 Default_shuffled<-Default_Dataset[sample(nrow(Default_Dataset)),]
 
